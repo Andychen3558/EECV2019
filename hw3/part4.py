@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-import sys
+import sys, time
 
 def main(ref_image, template, video):
     ref_image = cv2.imread(ref_image)  ## load gray if you need.
@@ -9,7 +9,12 @@ def main(ref_image, template, video):
     film_h, film_w = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
     film_fps = video.get(cv2.CAP_PROP_FPS)
     fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-    videowriter = cv2.VideoWriter("ar_video2.mp4", fourcc, film_fps, (film_w, film_h))
+    videowriter = cv2.VideoWriter("ar_video.mp4", fourcc, film_fps, (film_w, film_h))
+
+    # shrink images
+    height, width = template.shape[:2]
+    template = cv2.resize(template, (800, 800))
+    ref_image = cv2.resize(ref_image, (800, 800))
 
     # create sift feature detector and compute template features
     sift = cv2.xfeatures2d.SIFT_create()
@@ -44,20 +49,19 @@ def main(ref_image, template, video):
                 template_pts = np.float32([ template_keypoints[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
                 frame_pts = np.float32([ frame_keypoints[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
-                homography, mask = cv2.findHomography(template_pts*7, frame_pts, cv2.RANSAC, 5.0)
+                homography, mask = cv2.findHomography(template_pts, frame_pts, cv2.RANSAC, 5.0)
+                if homography is None:
+                    continue
 
                 # project image in video
                 h, w, ch = ref_image.shape
+                
                 for y in range(h):
                     for x in range(w):
                         coor = np.array([x, y, 1])
                         transformed = homography.dot(coor)
                         x_trans, y_trans = int(transformed[0]/transformed[2]), int(transformed[1]/transformed[2])
-
                         frame[y_trans, x_trans] = ref_image[y, x]
-                        frame[y_trans+1, x_trans] = ref_image[y, x]
-                        frame[y_trans, x_trans+1] = ref_image[y, x]
-                        frame[y_trans+1, x_trans+1] = ref_image[y, x]
 
             videowriter.write(frame)
             frame_number += 1
@@ -74,4 +78,7 @@ if __name__ == '__main__':
     ref_path = './input/sychien.jpg'
     template_path = './input/marker.png'
     video_path = sys.argv[1]  ## path to ar_marker.mp4
+    ts = time.time()
     main(ref_path,template_path,video_path)
+    te = time.time()
+    print('Elapse time: {}...'.format(te-ts))
